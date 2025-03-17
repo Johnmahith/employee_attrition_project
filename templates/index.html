@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job and Skill Prediction Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        #container {
+            width: 90%;
+            max-width: 1000px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            padding: 2rem;
+        }
+
+        h1 {
+            color: #3d8bfd;
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            color: #3d8bfd;
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+            border-bottom: 3px solid #3d8bfd;
+            padding-bottom: 0.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group input, .input-group button, .input-group select {
+            padding: 0.8rem;
+            font-size: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .input-group input:focus, .input-group select:focus {
+            border-color: #3d8bfd;
+            box-shadow: 0 0 5px rgba(61, 139, 253, 0.3);
+        }
+
+        .input-group button {
+            background-color: #3d8bfd;
+            color: #fff;
+            cursor: pointer;
+            border: none;
+            font-weight: 500;
+        }
+
+        .input-group button:hover {
+            background-color: #336fb3;
+        }
+
+        #job-results, #topic-skill-results {
+            padding: 1rem;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-top: 1rem;
+            color: #444;
+        }
+        
+        .chart-container {
+            margin-top: 2rem;
+        }
+
+        .map-container {
+            margin-top: 1.5rem;
+            height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Job and Skill Prediction Dashboard</h1>
+
+        <!-- LLM Topic & Skill Prediction Section -->
+        <div class="section">
+            <h2 class="section-title">LLM Topic & Skill Prediction</h2>
+            <div class="input-group">
+                <input type="text" id="llm-input" placeholder="Enter job title or description">
+                <select id="prediction-type">
+                    <option value="1">Generate Topics</option>
+                    <option value="2">Predict Skills</option>
+                </select>
+                <button onclick="processLLM()">Submit</button>
+            </div>
+            <div id="topic-skill-results">Result will display here.</div>
+        </div>
+
+        <!-- Job Analysis Section -->
+        <div class="section">
+            <h2 class="section-title">Job Analysis</h2>
+            <div class="input-group">
+                <input type="text" id="job-title" placeholder="Enter job title (e.g., Data Scientist)">
+                <input type="text" id="location" placeholder="Enter location (e.g., New York)">
+                <button onclick="searchJobs()">Search Jobs</button>
+            </div>
+            <div id="job-results">Job data results will display here.</div>
+            <div class="chart-container">
+                <canvas id="jobChart" width="400" height="200"></canvas>
+            </div>
+
+            <!-- Map Section -->
+            <div id="map" class="map-container"></div>
+        </div>
+    </div>
+
+    <script>
+        let jobChart; // Declare a variable to store the chart instance
+        let map; // Map instance
+        let markersLayer; // Layer to hold all markers
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Initialize Leaflet map
+            map = L.map('map').setView([37.7749, -122.4194], 5); // Default view (San Francisco, CA)
+
+            // Add Mapbox tile layer (replace with your Mapbox access token)
+            L.tileLayer(`https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=pk.eyJ1Ijoiam9obm1haGl0aCIsImEiOiJjbTNnZ25jeG0wNDVzMnFwdGtrdno1anlhIn0.-Yx_BSiXWPg6Nid57vR_VQ`, {
+                attribution: 'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 18,
+                id: 'mapbox/streets-v11',
+                tileSize: 512,
+                zoomOffset: -1,
+            }).addTo(map);
+
+            // Create a layer group to manage all markers
+            markersLayer = L.layerGroup().addTo(map);
+        });
+
+        async function processLLM() {
+            const inputText = document.getElementById('llm-input').value;
+            const predictionType = document.getElementById('prediction-type').value;
+
+            const response = await fetch('/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: inputText, type: predictionType }),
+            });
+
+            const data = await response.json();
+            document.getElementById('topic-skill-results').innerHTML = `<div><p>${data.processed_text}</p></div>`;
+        }
+
+        async function searchJobs() {
+            const jobTitle = document.getElementById('job-title').value;
+            const location = document.getElementById('location').value;
+
+            const response = await fetch(`/get_jobs?job_title=${jobTitle}&location=${location}`);
+            const data = await response.json();
+            displayJobResults(data);
+            renderJobChart(data.job_counts);
+
+            // Add job count markers on the map for each location
+            updateMapMarkers(data.job_positions);
+        }
+
+        function displayJobResults(data) {
+            let output = '<h3>Job Results:</h3><div>';
+            for (const [location, positions] of Object.entries(data.job_positions)) {
+                output += `<div><strong>${location}</strong> (${data.job_counts[location]} positions):<ul>`;
+                positions.forEach(position => output += `<li>${position}</li>`);
+                output += '</ul></div>';
+            }
+            document.getElementById('job-results').innerHTML = output;
+        }
+
+        function renderJobChart(jobCounts) {
+            const labels = Object.keys(jobCounts);
+            const data = Object.values(jobCounts);
+            const ctx = document.getElementById('jobChart').getContext('2d');
+
+            if (jobChart) {
+                jobChart.destroy();
+            }
+
+            jobChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Number of Positions',
+                        data: data,
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                            '#FF9F40', '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                        ],
+                        borderColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                            '#FF9F40', '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        async function updateMapMarkers(jobPositions) {
+            // Clear existing markers
+            markersLayer.clearLayers();
+
+            // Loop through job positions to add markers
+            for (const location in jobPositions) {
+                const jobCount = jobPositions[location].length;
+
+                // Geocode each location to get coordinates
+                const geocodeResponse = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(location)}.json?access_token=pk.eyJ1Ijoiam9obm1haGl0aCIsImEiOiJjbTNnZ25jeG0wNDVzMnFwdGtrdno1anlhIn0.-Yx_BSiXWPg6Nid57vR_VQ`);
+                const geocodeData = await geocodeResponse.json();
+                const coordinates = geocodeData.features[0]?.center;
+
+                if (coordinates) {
+                    const [lng, lat] = coordinates;
+
+                    // Create a marker with a tooltip displaying the location and job count
+                    const marker = L.marker([lat, lng]).addTo(markersLayer);
+                    marker.bindTooltip(`<strong>${location}</strong><br>${jobCount} positions`, { permanent: false, direction: 'top' });
+                }
+            }
+
+            // Center map on the last location
+            if (Object.keys(jobPositions).length > 0) {
+                const lastLocation = Object.keys(jobPositions).pop();
+                const lastCoordinates = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lastLocation)}.json?access_token=pk.eyJ1Ijoiam9obm1haGl0aCIsImEiOiJjbTNnZ25jeG0wNDVzMnFwdGtrdno1anlhIn0.-Yx_BSiXWPg6Nid57vR_VQ`);
+                const lastCoordinatesData = await lastCoordinates.json();
+                const lastCoords = lastCoordinatesData.features[0]?.center;
+
+                if (lastCoords) {
+                    const [lastLng, lastLat] = lastCoords;
+                    map.setView([lastLat, lastLng], 5);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
